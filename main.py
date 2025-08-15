@@ -108,6 +108,19 @@ async def get_status(task_id: str):
             "status": tasks[task_id]["status"],
             "result": tasks[task_id]["result"]
         }
+    elif tasks[task_id]["status"] == "stopped":
+        return {
+            "message": "Task was stopped.",
+            "task_id": task_id,
+            "status": tasks[task_id]["status"]
+        }
+    elif tasks[task_id]["status"] == "failed":
+        return {
+            "message": "Task failed.",
+            "task_id": task_id,
+            "status": tasks[task_id]["status"],
+            "result": tasks[task_id].get("result", "Unknown error")
+        }
     else:
         return {
             "message": "Task is not complete yet.",
@@ -127,12 +140,18 @@ async def cancel_task(task_id: str):
             "status": tasks[task_id]["status"]
         }
 
+    # Cancel the actual asyncio task
+    tasks[task_id]["task"].cancel()
+    # Set the cancel event as well
     tasks[task_id]["cancel_event"].set()
+    # Update status immediately
+    tasks[task_id]["status"] = "stopped"
+    
     logger.info(f"Task with ID: {task_id} cancelled.")
     return {
         "message": "Task cancelled.",
         "task_id": task_id,
-        "status": tasks[task_id]["status"]
+        "status": "stopped"
     }
 
 
