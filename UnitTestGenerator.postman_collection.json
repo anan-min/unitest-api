@@ -1,0 +1,125 @@
+{
+	"info": {
+		"_postman_id": "f8e7e3bb-4125-49d4-af0c-531956c72295",
+		"name": "UnitTestGenerator",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "18938140"
+	},
+	"item": [
+		{
+			"name": "Root",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{UnitTestAPI}}/",
+					"host": [
+						"{{UnitTestAPI}}"
+					],
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Start Generate Unit Test",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "model_name",
+							"value": "qwen2.5:3b",
+							"type": "text"
+						},
+						{
+							"key": "code",
+							"value": "from fastapi import FastAPI, Form, HTTPException\nfrom fastapi.middleware.cors import CORSMiddleware\nfrom local_llm import UnitTestGenerator\nfrom pydantic import BaseModel\nimport os\nimport logging\nimport uvicorn\nimport tempfile\nimport uuid\nimport time\nimport asyncio\n\nclass GenerateRequest(BaseModel):\n    code: str\n    model_name: str\n\n\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(__name__)\n\napp = FastAPI(title=\"UnitTest Generator\",)\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=[\"*\"],\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)\n\n# store tasks\n# create async function to run task\n# stop task usiing ?\n\nunitTestGenerator = UnitTestGenerator()\ntasks = {}\n\n\nasync def run_unit_test_task(task_id: str, code: str, model_name: str):\n    # still confuse why set at the start or it will be set using different method ?\n    cancel_event = tasks[task_id][\"cancel_event\"]\n    try:\n        logger.info(f\"Running unit test task with ID: {task_id}\")\n        tasks[task_id][\"status\"] = \"running\"\n\n        # add cancle event to this function\n        result = await unitTestGenerator.generate_unit_tests(code, model_name, cancel_event=cancel_event)\n\n        # cancel event set when task need to be stopped\n        if cancel_event.is_set():\n            tasks[task_id][\"status\"] = \"stopped\"\n            logger.warning(f\"[{task_id}] Task cancelled via asyncio.\")\n            return\n\n        tasks[task_id][\"result\"] = result\n        tasks[task_id][\"status\"] = \"complete\"\n        logger.info(f\"[{task_id}] Task completed.\")\n\n    # cancle\n    except asyncio.CancelledError:\n        tasks[task_id][\"status\"] = \"stopped\"\n        logger.warning(f\"[{task_id}] Task cancelled via asyncio.\")\n    # actual exception\n    except Exception as e:\n        tasks[task_id][\"status\"] = \"failed\"\n        tasks[task_id][\"result\"] = str(e)\n        logger.exception(f\"[{task_id}] Task failed: {e}\")\n\n\n@app.get(\"/\")\nasync def root():\n    return {\"message\": \"Welcome to UnitTest Generator API. You can generate unit tests for your code\"}\n\n\n@app.post(\"/generate/unit-test\")\nasync def generate_unit_test(request: GenerateRequest):\n    code = request.code\n    model_name = request.model_name\n    \n    task_id = str(uuid.uuid4())\n    # event for cancel task\n    cancel_event = asyncio.Event()\n    task = asyncio.create_task(run_unit_test_task(task_id, code, model_name))\n\n    # add to tasks\n    tasks[task_id] = {\n        \"status\": \"pending\",\n        \"result\": None,\n        \"task\": task,\n        \"cancel_event\": cancel_event\n    }\n\n    logger.info(f\"Task with ID: {task_id} started.\")\n    return {\"task_id\": task_id, \"status\": \"pending\"}\n\n\n@app.get(\"/status/{task_id}\")\nasync def get_status(task_id: str):\n    # if tasks not found\n    if task_id not in tasks:\n        raise HTTPException(status_code=404, detail=\"Task not found\")\n    # if task is complete return result\n    # if task is not complete return current status\n    if tasks[task_id][\"status\"] == \"complete\":\n        return {\n            \"message\": \"Task is complete.\",\n            \"task_id\": task_id,\n            \"status\": tasks[task_id][\"status\"],\n            \"result\": tasks[task_id][\"result\"]\n        }\n    else:\n        return {\n            \"message\": \"Task is not complete yet.\",\n            \"task_id\": task_id,\n            \"status\": tasks[task_id][\"status\"]\n        }\n\n\n@app.post(\"/cancel/{task_id}\")\nasync def cancel_task(task_id: str):\n    if task_id not in tasks:\n        raise HTTPException(status_code=404, detail=\"Task not found\")\n    if tasks[task_id][\"status\"] not in [\"pending\", \"running\"]:\n        return {\n            \"message\": \"Task cannot be cancelled.\",\n            \"task_id\": task_id,\n            \"status\": tasks[task_id][\"status\"]\n        }\n\n    tasks[task_id][\"cancel_event\"].set()\n    logger.info(f\"Task with ID: {task_id} cancelled.\")\n    return {\n        \"message\": \"Task cancelled.\",\n        \"task_id\": task_id,\n        \"status\": tasks[task_id][\"status\"]\n    }\n\n\n@app.get(\"/models\")\nasync def get_models():\n    try:\n        models = await unitTestGenerator.get_available_models()\n        return {\n            \"message\": \"Available models.\",\n            \"models\": models\n        }\n    except Exception as e:\n        logger.error(f\"Error getting models: {e}\")\n        raise HTTPException(\n            status_code=500, detail=\"Failed to get available models\")\n\n\nif __name__ == \"__main__\":\n    print(\"Starting server...\")\n    logger.info(\"Server running on http://localhost:8000\")\n    uvicorn.run(\"main:app\", host=\"0.0.0.0\", port=8000,\n                reload=True, log_level=\"info\")\n",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{UnitTestAPI}}/generate/unit-test",
+					"host": [
+						"{{UnitTestAPI}}"
+					],
+					"path": [
+						"generate",
+						"unit-test"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Status Generate Unit Test",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{UnitTestAPI}}/status/{{task_id}}",
+					"host": [
+						"{{UnitTestAPI}}"
+					],
+					"path": [
+						"status",
+						"{{task_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Cancel Generate Uni Test",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{UnitTestAPI}}/cancel/{{task_id}}",
+					"host": [
+						"{{UnitTestAPI}}"
+					],
+					"path": [
+						"cancel",
+						"{{task_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Models Name",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{UnitTestAPI}}/models",
+					"host": [
+						"{{UnitTestAPI}}"
+					],
+					"path": [
+						"models"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "UnitTestAPI",
+			"value": "http://localhost:8000",
+			"type": "default"
+		},
+		{
+			"key": "task_id",
+			"value": "42fa96e8-6c2b-4a3e-956b-cf199345db64",
+			"type": "default"
+		}
+	]
+}
