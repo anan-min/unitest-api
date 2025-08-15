@@ -25,7 +25,8 @@ class UnitTestGenerator:
 
     async def generate_unit_tests(self,
                                   code: str,
-                                  model_name: Optional[str] = "qwen2.5:3b") -> Dict[str, str]:
+                                  model_name: Optional[str] = "qwen2.5:3b",
+                                  cancel_event: Optional[asyncio.Event] = None) -> Dict[str, str]:
         """
         Complete pipeline to generate unit tests from code
 
@@ -38,13 +39,13 @@ class UnitTestGenerator:
         Returns:
             Dict[str, str]: Generated unit tests with metadata
         """
-        # Generate the prompt
+        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before prompt generation.")
         prompt = self.generate_prompt(code)
 
-        # Call Ollama
-        response = await self.call_ollama(prompt, model_name=model_name)
+        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before ollama call.")
+        response = await self.call_ollama(prompt, model_name=model_name, cancel_event=cancel_event)
 
-        # Parse and return results
+        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before response parsing.")
         parsed_result = self.parse_response(response)
 
         return {"test_code": parsed_result}
@@ -84,7 +85,7 @@ class UnitTestGenerator:
             code=code,
         )
 
-    async def call_ollama(self, prompt: str, model_name: Optional[str] = None) -> str:
+    async def call_ollama(self, prompt: str, model_name: Optional[str] = None, cancel_event: Optional[asyncio.Event] = None) -> str:
         """
         Send prompt to Ollama and get response
 
@@ -111,7 +112,16 @@ class UnitTestGenerator:
                 return response['message']['content']
             except Exception as e:
                 raise Exception(f"Error calling Ollama: {str(e)}")
-        return await loop.run_in_executor(None, sync_call)
+        try:
+            # with wait for allow cancellation
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, sync_call),
+                timeout=None  # You can add a timeout here if needed
+            )
+        except asyncio.CancelledError:
+            if cancel_event:
+                cancel_event.set()
+            raise
 
     def parse_response(self, response: str) -> str:
         """
@@ -149,6 +159,10 @@ class UnitTestGenerator:
 
         return cleaned_response
 
+    @staticmethod
+    def check_cancel_event(cancel_event, text):
+        if cancel_event and cancel_event.is_set():
+            raise asyncio.CancelledError(text)
 
 if __name__ == "__main__":
     unitTestGenerator = UnitTestGenerator()
