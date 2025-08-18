@@ -39,13 +39,16 @@ class UnitTestGenerator:
         Returns:
             Dict[str, str]: Generated unit tests with metadata
         """
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before prompt generation.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before prompt generation.")
         prompt = self.generate_prompt(code)
 
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before ollama call.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before ollama call.")
         response = await self.call_ollama(prompt, model_name=model_name, cancel_event=cancel_event)
 
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before response parsing.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before response parsing.")
         parsed_result = self.parse_response(response)
 
         return {"test_code": parsed_result}
@@ -65,9 +68,8 @@ class UnitTestGenerator:
                 if hasattr(models_response, 'models') and isinstance(models_response.models, list):
                     names = []
                     for model_obj in models_response.models:
-                        # Try to get .model attribute (model name)
                         model_name = getattr(model_obj, 'model', None)
-                        if model_name:
+                        if model_name and not self.is_embedding_model(model_obj):
                             names.append(model_name)
                         else:
                             print(f"Model entry missing 'model': {model_obj}")
@@ -164,15 +166,28 @@ class UnitTestGenerator:
         if cancel_event and cancel_event.is_set():
             raise asyncio.CancelledError(text)
 
+    @staticmethod
+    def is_embedding_model(model_obj):
+        families = []
+        if hasattr(model_obj, 'details') and hasattr(model_obj.details, 'families'):
+            families = model_obj.details.families
+        # Check for typical embedding family names
+        embedding_keywords = {'bert', 'embed', 'nomic-bert', 'embed-text'}
+        return any(fam.lower() in embedding_keywords for fam in families)
+
+
 if __name__ == "__main__":
     unitTestGenerator = UnitTestGenerator()
     models = asyncio.run(unitTestGenerator.get_available_models())
     print(f"Available models: {models}")
     code = "def add(a, b):\n    return a + b"
-    response = asyncio.run(unitTestGenerator.generate_unit_tests(code, model_name="qwen2.5:3b"))
+    response = asyncio.run(unitTestGenerator.generate_unit_tests(
+        code, model_name="qwen2.5:3b"))
 
-    response2 = asyncio.run(unitTestGenerator.generate_unit_tests(ts_example_code, model_name="qwen2.5:3b"))
+    response2 = asyncio.run(unitTestGenerator.generate_unit_tests(
+        ts_example_code, model_name="qwen2.5:3b"))
     print(f"Response 2: {response2}")
 
-    reponse3 = asyncio.run(unitTestGenerator.generate_unit_tests(dotnet_example_code, model_name="qwen2.5:3b"))
+    reponse3 = asyncio.run(unitTestGenerator.generate_unit_tests(
+        dotnet_example_code, model_name="qwen2.5:3b"))
     print(f"Response 3: {reponse3}")

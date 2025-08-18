@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  unitest-api:
+    build:
+      context: .
+      dockerfile: DockerFile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - RAGFLOW_BASE_URL=http://host.docker.internal:9380
+    volumes:
+      - .:/app
+    restart: unless-stopped
