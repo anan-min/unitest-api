@@ -20,7 +20,8 @@ class UnitTestGenerator:
         self.model_name = model_name
         # Resolve host precedence: explicit > env (OLLAMA_HOST/OLLAMA_BASE_URL) > default localhost
         resolved_host = host or os.getenv("OLLAMA_HOST") or os.getenv(
-            "OLLAMA_BASE_URL") or "http://localhost:11434" or "https://host.docker.internal:11434"
+            "OLLAMA_BASE_URL") or "http://host.docker.internal:11434" or "http://localhost:11434"
+        print(f"Using Ollama host: {resolved_host}")
         self.client = ollama.Client(host=resolved_host, headers=headers or {})
 
     async def generate_unit_tests(self,
@@ -39,13 +40,16 @@ class UnitTestGenerator:
         Returns:
             Dict[str, str]: Generated unit tests with metadata
         """
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before prompt generation.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before prompt generation.")
         prompt = self.generate_prompt(code)
 
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before ollama call.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before ollama call.")
         response = await self.call_ollama(prompt, model_name=model_name, cancel_event=cancel_event)
 
-        UnitTestGenerator.check_cancel_event(cancel_event, "Task was cancelled before response parsing.")
+        UnitTestGenerator.check_cancel_event(
+            cancel_event, "Task was cancelled before response parsing.")
         parsed_result = self.parse_response(response)
 
         return {"test_code": parsed_result}
@@ -164,15 +168,19 @@ class UnitTestGenerator:
         if cancel_event and cancel_event.is_set():
             raise asyncio.CancelledError(text)
 
+
 if __name__ == "__main__":
     unitTestGenerator = UnitTestGenerator()
     models = asyncio.run(unitTestGenerator.get_available_models())
     print(f"Available models: {models}")
     code = "def add(a, b):\n    return a + b"
-    response = asyncio.run(unitTestGenerator.generate_unit_tests(code, model_name="qwen2.5:3b"))
+    response = asyncio.run(unitTestGenerator.generate_unit_tests(
+        code, model_name="qwen2.5:3b"))
 
-    response2 = asyncio.run(unitTestGenerator.generate_unit_tests(ts_example_code, model_name="qwen2.5:3b"))
+    response2 = asyncio.run(unitTestGenerator.generate_unit_tests(
+        ts_example_code, model_name="qwen2.5:3b"))
     print(f"Response 2: {response2}")
 
-    reponse3 = asyncio.run(unitTestGenerator.generate_unit_tests(dotnet_example_code, model_name="qwen2.5:3b"))
+    reponse3 = asyncio.run(unitTestGenerator.generate_unit_tests(
+        dotnet_example_code, model_name="qwen2.5:3b"))
     print(f"Response 3: {reponse3}")
